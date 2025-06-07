@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import importlib
 import pygame
 from cards import Deck, SUITS, SYMBOLS
 from collections import defaultdict
@@ -44,13 +45,24 @@ class Player:
         return None
 
 class Game:
-    def __init__(self):
+    def __init__(self, ai_module: str | None = None):
         pygame.init()
         self.screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption('King of Montenegro')
         self.deck = Deck()
         self.discard = []
-        self.players = [Player('Player 1'), Player('Player 2')]
+        players = [Player('Player 1')]
+        if ai_module:
+            try:
+                module = importlib.import_module(ai_module)
+                ai_cls = getattr(module, 'AI')
+                players.append(Player('AI', ai_cls()))
+            except Exception as e:
+                print(f'Failed to load AI module {ai_module}:', e)
+                players.append(Player('Player 2'))
+        else:
+            players.append(Player('Player 2'))
+        self.players = players
         for p in self.players:
             p.draw(self.deck, 3)
         self.turn = 0
@@ -85,7 +97,13 @@ class Game:
                 self.screen.blit(img, rect)
         pygame.display.flip()
 
-    def get_input(self, prompt):
+    def get_input(self, prompt, player, reveal, pile):
+        if player.ai:
+            try:
+                return player.ai.choose_action(self, player, reveal, pile)
+            except Exception as e:
+                print('AI error:', e)
+                return 'concede'
         print(prompt)
         pygame.event.pump()
         return input()
@@ -104,7 +122,9 @@ class Game:
         while True:
             player = self.players[current]
             self.show_state(reveal)
-            action = self.get_input(f"{player.name}: play index, call, or concede: ")
+            action = self.get_input(
+                f"{player.name}: play index, call, or concede: ", player, reveal, pile
+            )
             if action.startswith('play'):
                 try:
                     idx = int(action.split()[1])
@@ -166,9 +186,16 @@ class Game:
         pygame.quit()
 
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Play King of Montenegro')
+    parser.add_argument('--ai', help='Python module path for AI opponent')
+    args = parser.parse_args()
+
     try:
         ensure_card_images()
     except Exception as e:
         print('Failed to generate card images:', e)
         sys.exit(1)
-    Game().run()
+
+    Game(ai_module=args.ai).run()
