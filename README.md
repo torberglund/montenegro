@@ -1,6 +1,6 @@
 # King of Montenegro
 
-This repository contains a minimal implementation of the card game **King of Montenegro** using `pygame`.
+This repository contains an implementation of the card game **King of Montenegro** using `pygame`.
 
 ## Requirements
 
@@ -29,7 +29,11 @@ Run the game with:
 python game.py
 ```
 
-A window will open showing each player's hand. The game logic is largely text-driven: players enter commands in the terminal while the graphical window displays the cards. The implemented rules cover basic duels and collecting armies. The structure allows loading AI opponents in the future, but currently both players are human controlled.
+To play against the included example AI opponent, run:
 
-This is a simplified reference implementation and does not cover every nuance from the full rule set, but it provides a starting point for further development.
+```bash
+python game.py --ai ai_random
+```
+
+A window will open showing each player's hand. The game logic is primarily text-driven: players enter commands in the terminal while the graphical window displays the cards. By default the game starts with two human players, but the `--ai` option loads an AI module for the second player.
 
