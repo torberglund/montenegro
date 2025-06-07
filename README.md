@@ -39,6 +39,16 @@ python game.py --ai ai_random
 
 A window will open showing each player's hand. The game logic is primarily text-driven: players enter commands in the terminal while the graphical window displays the cards. By default the game starts with two human players, but the `--ai` option loads an AI module for the second player.
 
+### Controls
+
+Enter these commands in the terminal during play:
+
+- `play <index>` – play the card at the given hand index.
+- `wild <king_index> <card_index>` – play a King as a wild followed by another card.
+- `call` – challenge the previous play.
+- `concede` – concede the current duel.
+- During the war phase use `war <suit> [reinforcements...]` or `pass`.
+
 ## Rules
 
 1. Objective

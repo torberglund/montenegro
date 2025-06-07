@@ -33,9 +33,9 @@ class Player:
         self.hand = []
         self.armies = defaultdict(list)
 
-    def draw(self, deck, n=1):
+    def draw(self, draw_func, n=1):
         for _ in range(n):
-            card = deck.draw()
+            card = draw_func()
             if card:
                 self.hand.append(card)
 
@@ -64,11 +64,65 @@ class Game:
             players.append(Player('Player 2'))
         self.players = players
         for p in self.players:
-            p.draw(self.deck, 3)
+            p.draw(self.draw_card, 3)
         self.turn = 0
         self.card_images = {}
         self.load_images()
         self.font = pygame.font.SysFont('arial', 20)
+
+    def draw_card(self):
+        card = self.deck.draw()
+        if not card and self.discard:
+            self.deck.add_cards(self.discard)
+            self.discard = []
+            card = self.deck.draw()
+        return card
+
+    def maintain_hands(self):
+        for p in self.players:
+            while len(p.hand) < 3:
+                card = self.draw_card()
+                if not card:
+                    break
+                p.hand.append(card)
+
+    def declare_war(self, attacker, defender, suit, reinforcements):
+        if not attacker.armies[suit] or not defender.armies[suit]:
+            print('War not possible on that suit.')
+            return
+        attack_total = len(attacker.armies[suit]) + sum(1 for c in attacker.hand if c.suit == suit)
+        for r in reinforcements:
+            comp = attacker.armies.get(r)
+            if not comp:
+                continue
+            attack_total += sum(1 if c.suit == r else -1 for c in comp)
+        defend_total = len(defender.armies[suit]) + sum(1 for c in defender.hand if c.suit == suit)
+        if attack_total > defend_total:
+            print(f"{attacker.name} wins the war for {suit}!")
+            self.discard.extend(defender.armies[suit])
+            defender.armies[suit] = []
+        else:
+            print(f"{defender.name} defends {suit} successfully.")
+            for r in [suit] + reinforcements:
+                self.discard.extend(attacker.armies[r])
+                attacker.armies[r] = []
+
+    def war_phase(self):
+        player = self.players[self.turn]
+        opponent = self.players[1 - self.turn]
+        action = self.get_input(
+            f"{player.name}: declare 'war <suit> [reinforcements]' or 'pass': ",
+            player,
+            None,
+            None,
+        )
+        if action.startswith('war'):
+            tokens = action.split()
+            if len(tokens) >= 2:
+                suit = tokens[1]
+                reinforcements = tokens[2:]
+                self.declare_war(player, opponent, suit, reinforcements)
+                self.maintain_hands()
 
     def load_images(self):
         for fname in os.listdir('cards'):
@@ -109,11 +163,11 @@ class Game:
         return input()
 
     def duel(self):
-        reveal = self.deck.draw()
+        reveal = self.draw_card()
         drawn_king = None
         while reveal and reveal.rank == 'K':
             drawn_king = reveal
-            reveal = self.deck.draw()
+            reveal = self.draw_card()
         if not reveal:
             return False
         pile = []
@@ -136,28 +190,83 @@ class Game:
                     print('invalid card')
                     continue
                 pile.append((current, card))
-                player.draw(self.deck)
+                self.maintain_hands()
+                current, opponent = opponent, current
+            elif action.startswith('wild'):
+                parts = action.split()
+                if len(parts) != 3:
+                    print('usage: wild <king_idx> <card_idx>')
+                    continue
+                try:
+                    k_idx = int(parts[1])
+                    c_idx = int(parts[2])
+                except Exception:
+                    print('invalid indices')
+                    continue
+                king = player.remove_card(k_idx)
+                if not king or not king.is_king:
+                    print('invalid king')
+                    if king:
+                        player.hand.insert(k_idx, king)
+                    continue
+                # adjust second index if necessary
+                if c_idx > k_idx:
+                    c_idx -= 1
+                card = player.remove_card(c_idx)
+                if not card:
+                    print('invalid card')
+                    player.hand.insert(k_idx, king)
+                    continue
+                pile.append((current, (king, card)))
+                self.maintain_hands()
                 current, opponent = opponent, current
             elif action == 'call':
                 if not pile:
                     print('nothing to call')
                     continue
-                last_player, last_card = pile[-1]
-                valid = last_card.beats(reveal)
+                last_player, last_play = pile[-1]
+                if isinstance(last_play, tuple):
+                    king_card, last_card = last_play
+                    valid = last_card.suit == reveal.suit and last_card.value > reveal.value
+                else:
+                    last_card = last_play
+                    valid = last_card.beats(reveal)
                 winner = last_player if valid else opponent
                 loser = opponent if valid else last_player
-                self.players[winner].armies[reveal.suit].append(reveal)
+                win_p = self.players[winner]
+                lose_p = self.players[loser]
+                win_p.armies[reveal.suit].append(reveal)
+                bonus = self.draw_card()
+                if bonus:
+                    win_p.armies[reveal.suit].append(bonus)
                 if drawn_king:
-                    self.players[winner].armies[reveal.suit].append(drawn_king)
-                self.players[winner].armies[last_card.suit].append(last_card)
+                    win_p.armies[reveal.suit].append(drawn_king)
+                if isinstance(last_play, tuple):
+                    win_p.armies[last_card.suit].append(last_card)
+                    self.discard.append(king_card) if winner != last_player else win_p.armies[king_card.suit].append(king_card)
+                else:
+                    win_p.armies[last_card.suit].append(last_card)
+                if winner != last_player:
+                    # loser card(s) discarded
+                    if isinstance(last_play, tuple):
+                        self.discard.extend([king_card, last_card])
+                    else:
+                        self.discard.append(last_card)
                 self.turn = winner
-                print(f"{self.players[winner].name} wins the duel")
+                self.maintain_hands()
+                print(f"{win_p.name} wins the duel")
                 break
             elif action == 'concede':
                 self.players[opponent].armies[reveal.suit].append(reveal)
                 if drawn_king:
                     self.players[opponent].armies[reveal.suit].append(drawn_king)
+                for _, played in pile:
+                    if isinstance(played, tuple):
+                        self.discard.extend(played)
+                    else:
+                        self.discard.append(played)
                 self.turn = opponent
+                self.maintain_hands()
                 print(f"{self.players[opponent].name} wins the duel by concession")
                 break
             else:
@@ -180,6 +289,7 @@ class Game:
                 print(f"{self.players[winner].name} wins the game!")
                 running = False
                 continue
+            self.war_phase()
             if not self.duel():
                 print('No more cards. Game over.')
                 break
