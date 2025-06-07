@@ -39,5 +39,10 @@ class Deck:
     def draw(self) -> Card:
         return self.cards.pop() if self.cards else None
 
+    def add_cards(self, cards: list[Card]):
+        """Add cards to the deck and reshuffle."""
+        self.cards.extend(cards)
+        random.shuffle(self.cards)
+
     def __len__(self):
         return len(self.cards)
